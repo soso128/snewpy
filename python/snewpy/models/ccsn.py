@@ -21,7 +21,7 @@ import numpy as np
 from astropy import units as u
 from astropy.io import ascii, fits
 from astropy.table import Table
-from scipy.special import gamma, lpmv
+from scipy.special import gamma, loggamma, lpmv
 import re
 
 try:
@@ -30,8 +30,75 @@ except ImportError:
     pass
 
 from snewpy.neutrino import Flavor
-from .base import PinchedModel, SupernovaModel, _GarchingArchiveModel
+from .base import PinchedModel, SupernovaModel, _GarchingArchiveModel, get_value
 
+class BugliModel(PinchedModel):
+    """Subclass that reads models in the format used by M. Bugli"""
+
+    def __init__(self, filename, los = "equator"):
+        """Initialize model.
+
+        Parameters
+        ----------
+        filename : str
+            Absolute or relative path to file prefix, we add nue/nuebar/nux.
+        los : string
+            Equation of state used in simulation.
+        """
+
+        # Store model metadata.
+        self.filename = os.path.basename(filename)
+        self.los = los
+        metadata = {
+            'File name':self.filename,
+            'LOS':self.los,
+            }
+
+        # Read through the several ASCII files for the chosen simulation and
+        # merge the data into one giant table.
+        mergtab = None
+        _lnames = []
+        _enames = []
+        _e2names = []
+        _anames = []
+        _filename = filename + '_' + los + ".dat"
+        for flavor in Flavor:
+            if flavor == Flavor.NU_X_BAR: continue
+            _flav = flavor.name
+            # _flav = "NU_BAR" if flavor == Flavor.NU_E_BAR else flavor.name
+            _lnames += ['L_{}'.format(_flav)]
+            _enames  += ['E_{}'.format(_flav)]
+            _e2names += ['E2_{}'.format(_flav)]
+            _anames  += ['ALPHA_{}'.format(_flav)]
+        simtab = Table.read(_filename,
+                            names=['TIME'] + _lnames + _enames + _e2names,
+                            format='ascii')
+        simtab['TIME'].unit = 's'
+
+        # Split nuX and nubarX
+        simtab[f'L_{flavor.NU_X.name}'] /= 2.0
+        simtab[f'L_{flavor.NU_X_BAR.name}'] = simtab[f'L_{flavor.NU_X.name}']
+        simtab[f'E_{flavor.NU_X_BAR.name}'] = simtab[f'E_{flavor.NU_X.name}']
+        simtab[f'E2_{flavor.NU_X_BAR.name}'] = simtab[f'E2_{flavor.NU_X.name}']
+        _lnames.append(f'L_{flavor.NU_X_BAR.name}')
+        _enames.append(f'E_{flavor.NU_X_BAR.name}')
+        _e2names.append(f'E2_{flavor.NU_X_BAR.name}')
+        _anames.append(f'ALPHA_{flavor.NU_X_BAR.name}')
+
+        # Select line of sight
+        for _lname,_ename,_e2name,_aname in zip(_lnames,_enames,_e2names,_anames):
+            simtab[_lname].unit = '1e52 erg/s'
+            simtab[_aname] = (2*simtab[_ename]**2 - simtab[_e2name]) / (simtab[_e2name] - simtab[_ename]**2)
+            simtab[_ename].unit = 'MeV'
+            del simtab[_e2name]
+
+            if mergtab is None:
+                mergtab = simtab
+            mergtab[_lname].fill_value = 0.
+            mergtab[_ename].fill_value = 0.
+            mergtab[_aname].fill_value = 0.
+        simtab = mergtab.filled()
+        super().__init__(simtab, metadata)
 
 class Analytic3Species(PinchedModel):
     """Allow to generate an analytic model given total luminosity,
