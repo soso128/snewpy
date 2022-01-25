@@ -75,8 +75,6 @@ class BugliModel(PinchedModel):
                             format='ascii')
         simtab['TIME'].unit = 's'
 
-        # Split nuX and nubarX
-        simtab[f'L_{flavor.NU_X.name}'] /= 2.0
         simtab[f'L_{flavor.NU_X_BAR.name}'] = simtab[f'L_{flavor.NU_X.name}']
         simtab[f'E_{flavor.NU_X_BAR.name}'] = simtab[f'E_{flavor.NU_X.name}']
         simtab[f'E2_{flavor.NU_X_BAR.name}'] = simtab[f'E2_{flavor.NU_X.name}']
