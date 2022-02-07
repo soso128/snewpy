@@ -73,7 +73,7 @@ class BugliModel(PinchedModel):
         simtab = Table.read(_filename,
                             names=['TIME'] + _lnames + _enames + _e2names,
                             format='ascii')
-        simtab['TIME'].unit = 's'
+        simtab['TIME'].unit = 'ms'
 
         simtab[f'L_{flavor.NU_X_BAR.name}'] = simtab[f'L_{flavor.NU_X.name}']
         simtab[f'E_{flavor.NU_X_BAR.name}'] = simtab[f'E_{flavor.NU_X.name}']
