@@ -40,7 +40,8 @@ from snewpy.snowglobes_interface import SNOwGLoBES, SimpleRate
 
 logger = logging.getLogger(__name__)
 
-def generate_time_series(model_path, model_type, transformation_type, d, output_filename=None, ntbins=30, deltat=None, snmodel_dict={}):
+def generate_time_series(model_path, model_type, transformation_type, d, output_filename=None, ntbins=30, deltat=None, snmodel_dict={},
+                        output_dir=None):
     """Generate time series files in SNOwGLoBES format.
 
     This version will subsample the times in a supernova model, produce energy
@@ -64,6 +65,8 @@ def generate_time_series(model_path, model_type, transformation_type, d, output_
         Length of time slices.
     snmodel_dict : dict
         Additional arguments for setting up the supernova model. See documentation of relevant ``SupernovaModel`` subclass for available options. (Optional)
+    output_dir : str
+        Output directory. Default is the model folder (Optional).
 
     Returns
     -------
@@ -92,13 +95,14 @@ def generate_time_series(model_path, model_type, transformation_type, d, output_
     times = 0.5*(tedges[1:] + tedges[:-1])
 
     # Generate output.
+    if not output_dir: output_dir = model_dir
     if output_filename is not None:
         tfname = output_filename + 'kpc.tar.bz2'
     else:
         model_file_root, _ = os.path.splitext(model_file)  # strip extension (if present)
         tfname = model_file_root + '.' + transformation_type + '.{:.3f},{:.3f},{:d}-{:.1f}'.format(tmin, tmax, ntbins, d) + 'kpc.tar.bz2'
 
-    with tarfile.open(os.path.join(model_dir, tfname), 'w:bz2') as tf:
+    with tarfile.open(os.path.join(output_dir, tfname), 'w:bz2') as tf:
         #creates file in tar archive that gives information on parameters
         output = '\n'.join(map(str, transformation_type)).encode('ascii')
         tf.addfile(tarfile.TarInfo(name='parameterinfo'), io.BytesIO(output))
@@ -143,10 +147,11 @@ def generate_time_series(model_path, model_type, transformation_type, d, output_
             info.size = len(output)
             tf.addfile(info, io.BytesIO(output))
 
-    return os.path.join(model_dir, tfname)
+    return os.path.join(output_dir, tfname)
 
 
-def generate_fluence(model_path, model_type, transformation_type, d, output_filename=None, tstart=None, tend=None, snmodel_dict={}):
+def generate_fluence(model_path, model_type, transformation_type, d, output_filename=None, tstart=None, tend=None, snmodel_dict={},
+                    output_dir=None):
     """Generate fluence files in SNOwGLoBES format.
 
     This version will subsample the times in a supernova model, produce energy
@@ -170,6 +175,8 @@ def generate_fluence(model_path, model_type, transformation_type, d, output_file
         End of time interval to integrate over, or list of end times of the time series bins.
     snmodel_dict : dict
         Additional arguments for setting up the supernova model. See documentation of relevant ``SupernovaModel`` subclass for available options. (Optional)
+    output_dir : str
+        Output directory. Default is the model folder (Optional).
 
     Returns
     -------
@@ -224,13 +231,14 @@ def generate_fluence(model_path, model_type, transformation_type, d, output_file
         ending_index = [next(j for j, t in enumerate(model_tend) if t >= tend)]
 
     # Generate output.
+    if not output_dir: output_dir = model_dir
     if output_filename is not None:
         tfname = output_filename+'.tar.bz2'
     else:
         model_file_root, _ = os.path.splitext(model_file)  # strip extension (if present)
         tfname = model_file_root + '.' + transformation_type + '.{:.3f},{:.3f},{:d}-{:.1f}'.format(t0, t1, nbin, d) + 'kpc.tar.bz2'
 
-    with tarfile.open(os.path.join(model_dir, tfname), 'w:bz2') as tf:
+    with tarfile.open(os.path.join(output_dir, tfname), 'w:bz2') as tf:
         #creates file in tar archive that gives information on parameters
         output = '\n'.join(map(str, transformation_type)).encode('ascii')
         tf.addfile(tarfile.TarInfo(name='parameterinfo'), io.BytesIO(output))
@@ -315,7 +323,7 @@ def generate_fluence(model_path, model_type, transformation_type, d, output_file
             info.size = len(output)
             tf.addfile(info, io.BytesIO(output))
 
-    return os.path.join(model_dir, tfname)
+    return os.path.join(output_dir, tfname)
 
 def simulate(SNOwGLoBESdir, tarball_path, detector_input="all", verbose=False, detector_effects=True):
     """Takes as input the neutrino flux files and configures and runs the supernova script inside SNOwGLoBES, which outputs calculated event rates expected for a given (set of) detector(s). These event rates are given as a function of the neutrino energy and time, for each interaction channel.
