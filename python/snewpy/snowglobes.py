@@ -382,7 +382,7 @@ def get_channel_label(c):
     else: 
         return re_chan_label.sub(gen_label, c) 
 
-def collate(SNOwGLoBESdir, tarball_path, detector_input="all", skip_plots=False, verbose=False, remove_generated_files=True, smearing = True):
+def collate(SNOwGLoBESdir, tarball_path, detector_input="all", skip_plots=False, verbose=False, remove_generated_files=True, smearing = True, merge_channels = True):
     """Collates SNOwGLoBES output files and generates plots or returns a data table.
 
     Parameters
@@ -401,6 +401,8 @@ def collate(SNOwGLoBESdir, tarball_path, detector_input="all", skip_plots=False,
         [DEPRECATED, DO NOT USE.]
     smearing: bool
         Also consider results with smearing effects.
+    merge_channels: bool
+        Merge flavors for elastic scattering and NC channels
 
     Returns
     -------
@@ -467,7 +469,8 @@ def collate(SNOwGLoBESdir, tarball_path, detector_input="all", skip_plots=False,
         for det in tables:
             results[det] = {}
             for flux,t in tables[det].items():
-                t = aggregate_channels(t,nc='nc_',e='_e')
+                if merge_channels:
+                    t = aggregate_channels(t,nc='nc_',e='_e')
                 for w in ['weighted','unweighted']:
                     for s in smearing_options:
                         table = t[w][s]

@@ -85,5 +85,19 @@ with TemporaryDirectory(prefix='snowglobes') as tempdir:
 # Save data and close ROOT files
 print("Closing files...")
 for fname in outputnames:
+    if f"{flux_root}_nue_e" in hist_dict.keys():
+        # Add merged histograms for elastic scattering and NC
+        flux_root = fname.split('/')[-1][:-5]
+        h_ES = hist_dict[f"{flux_root}_nue_e"].Clone()
+        h_ES.SetName("e")
+        names = [c for c in column_names if "_e" in c and c != "nue_e"]
+        for n in names: h_ES.Add(hist_dict[f"{flux_root}_{n}"])
+        h_NC = hist_dict[f"{flux_root}_nc_nue_O16"].Clone()
+        names = [c for c in column_names if "_nc" in c and c != "nc_nue_O16"]
+        for n in names: h_NC.Add(hist_dict[f"{flux_root}_{n}"])
+        h_NC.SetName("nc")
+        h_NC.SetDirectory(outputnames[fname])
+        h_ES.SetDirectory(outputnames[fname])
+    # Save files
     outputnames[fname].Write()
     outputnames[fname].Close()
