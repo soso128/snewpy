@@ -86,7 +86,7 @@ def generate_time_series(model_path, model_type, transformation_type, d, output_
     tmin = snmodel.get_time()[0]
     tmax = snmodel.get_time()[-1]
     if deltat is not None:
-        dt = deltat
+        dt = deltat if  deltat < (tmax - tmin) else tmax-tmin-(1e-6*u.s)
         ntbins = int((tmax-tmin)/dt)
     else:
         dt = (tmax - tmin) / (ntbins+1)
