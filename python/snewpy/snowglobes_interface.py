@@ -52,6 +52,8 @@ from tqdm.auto import tqdm
 def guess_material(detector):
     if detector.startswith('wc') or detector.startswith('ice'):
         mat = 'water'
+    elif detector.startswith('dark'):
+        mat = 'argon_coh'
     elif detector.startswith('d2O'):
         mat = 'heavywater'
     elif detector.startswith('ar'):
