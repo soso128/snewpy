@@ -44,8 +44,8 @@ with TemporaryDirectory(prefix='snowglobes') as tempdir:
         if first:
             # Time boundaries are formatted to be %0.3f in generate_time_series
             tmin,tmax,ntbins = flux_root.split(',')
-            tmin = float(".".join(tmin.split('.')[-2:]))
-            tmax = float(tmax)
+            tmin = float((".".join(tmin.split('.')[-2:])).split()[0])
+            tmax = float(tmax.split()[0])
             ntbins = int(ntbins.split('-')[0])
             print(f"Time binning is: tmin={tmin}, tmax={tmax}, ntbins={ntbins}")
             first = False
