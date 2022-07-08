@@ -77,7 +77,13 @@ def generate_time_series(model_path, model_type, transformation_type, d, output_
 
     # Choose flavor transformation. Use dict to associate the transformation name with its class.
     flavor_transformation_dict = {'NoTransformation': NoTransformation(), 'AdiabaticMSW_NMO': AdiabaticMSW(mh=MassHierarchy.NORMAL), 'AdiabaticMSW_IMO': AdiabaticMSW(mh=MassHierarchy.INVERTED), 'NonAdiabaticMSWH_NMO': NonAdiabaticMSWH(mh=MassHierarchy.NORMAL), 'NonAdiabaticMSWH_IMO': NonAdiabaticMSWH(mh=MassHierarchy.INVERTED), 'TwoFlavorDecoherence': TwoFlavorDecoherence(), 'ThreeFlavorDecoherence': ThreeFlavorDecoherence(), 'NeutrinoDecay_NMO': NeutrinoDecay(mh=MassHierarchy.NORMAL), 'NeutrinoDecay_IMO': NeutrinoDecay(mh=MassHierarchy.INVERTED)}
-    flavor_transformation = flavor_transformation_dict[transformation_type]
+    flavor_transformation = None
+    if transformation_type in flavor_transformation_dict.keys():
+        flavor_transformation = flavor_transformation_dict[transformation_type]
+    else:
+        flavor_transformation = ArbitraryTransform(pee=transformation_type[0],pbaree=transformation_type[1])
+        transformation_type = f"pee={transformation_type[0]}_pbaree={transformation_type[1]}"
+        
 
     model_dir, model_file = os.path.split(os.path.abspath(model_path))
     snmodel = model_class(model_path, **snmodel_dict)
@@ -187,7 +193,12 @@ def generate_fluence(model_path, model_type, transformation_type, d, output_file
 
     # Choose flavor transformation. Use dict to associate the transformation name with its class.
     flavor_transformation_dict = {'NoTransformation': NoTransformation(), 'AdiabaticMSW_NMO': AdiabaticMSW(mh=MassHierarchy.NORMAL), 'AdiabaticMSW_IMO': AdiabaticMSW(mh=MassHierarchy.INVERTED), 'NonAdiabaticMSWH_NMO': NonAdiabaticMSWH(mh=MassHierarchy.NORMAL), 'NonAdiabaticMSWH_IMO': NonAdiabaticMSWH(mh=MassHierarchy.INVERTED), 'TwoFlavorDecoherence': TwoFlavorDecoherence(), 'ThreeFlavorDecoherence': ThreeFlavorDecoherence(), 'NeutrinoDecay_NMO': NeutrinoDecay(mh=MassHierarchy.NORMAL), 'NeutrinoDecay_IMO': NeutrinoDecay(mh=MassHierarchy.INVERTED)}
-    flavor_transformation = flavor_transformation_dict[transformation_type]
+    flavor_transformation = None
+    if transformation_type in flavor_transformation_dict.keys():
+        flavor_transformation = flavor_transformation_dict[transformation_type]
+    else:
+        flavor_transformation = ArbitraryTransform(pee=transformation_type[0],pbaree=transformation_type[1])
+        transformation_type = f"pee={transformation_type[0]}_pbaree={transformation_type[1]}"
 
     model_dir, model_file = os.path.split(os.path.abspath(model_path))
     snmodel = model_class(model_path, **snmodel_dict)
