@@ -92,12 +92,19 @@ for fname in outputnames:
         h_ES.SetName("e")
         names = [c for c in column_names if "_e" in c and c != "nue_e"]
         for n in names: h_ES.Add(hist_dict[f"{flux_root}_{n}"])
+        h_ES.SetDirectory(outputnames[fname])
+    if f"{flux_root}_nc_nue_O16" in hist_dict.keys():
         h_NC = hist_dict[f"{flux_root}_nc_nue_O16"].Clone()
+        h_NC.SetName("nc")
         names = [c for c in column_names if "_nc" in c and c != "nc_nue_O16"]
         for n in names: h_NC.Add(hist_dict[f"{flux_root}_{n}"])
-        h_NC.SetName("nc")
         h_NC.SetDirectory(outputnames[fname])
-        h_ES.SetDirectory(outputnames[fname])
+    if f"{flux_root}_nc_nue_Ar40" in hist_dict.keys():
+        h_NC = hist_dict[f"{flux_root}_nc_nue_Ar40"].Clone()
+        h_NC.SetName("nc")
+        names = [c for c in column_names if "_nc" in c and c != "nc_nue_Ar40"]
+        for n in names: h_NC.Add(hist_dict[f"{flux_root}_{n}"])
+        h_NC.SetDirectory(outputnames[fname])
     # Save files
     outputnames[fname].Write()
     outputnames[fname].Close()
