@@ -317,22 +317,32 @@ class SimpleRate(SNOwGLoBES):
         for channel in self.channels[material].itertuples():
             xsec_path = f"xscns/xs_{channel.name}.dat"
             xsec = np.loadtxt(self.base_dir/xsec_path)
-            flavor_index = 0 if 'e' in channel.flavor else (1 if 'm' in channel.flavor else 2)
-            flavor = flavor_index + (3 if channel.parity == '-' else 0)
-            flux = fluxes[:, (0,1+flavor)]
-            binsize = energies[1] - energies[0]
-            # Cross-section in 10^-38 cm^2
-            xsecs = np.interp(np.log(energies)/np.log(10), xsec[:, 0], xsec[:, 1+flavor], left=0, right=0) * energies
-            # Fluence (flux integrated over time bin) in cm^-2 
-            # (must be divided by 0.2 MeV to compensate the multiplication in generate_time_series)
-            fluxs = np.interp(energies, flux[:, 0], flux[:, 1], left=0, right=0)/2e-4
-            # Rate computation
-            rates = xsecs * 1e-38 * fluxs * float(TargetMass) * 1./1.661e-33 * binsize
-            # Weighting
-            weighted_rates = rates * channel.weight
-            # Write to dictionary
-            data[(channel.name,'unsmeared','unweighted')] = rates
-            data[(channel.name,'unsmeared','weighted')] = weighted_rates
+            flavors = ['e','m','t'] if channel.flavor == "all" else [channel.flavor]
+            parities = ['+','-'] if channel.parity == "all" else [channel.parity]
+            for flav in flavors:
+                for parity in parities:
+                    flavor_index = 0 if 'e' in flav else (1 if 'm' in flav else 2)
+                    flavor = flavor_index + (3 if parity == '-' else 0)
+                    flux = fluxes[:, (0,1+flavor)]
+                    binsize = energies[1] - energies[0]
+                    # Cross-section in 10^-38 cm^2
+                    xsecs = np.interp(np.log(energies)/np.log(10), xsec[:, 0], xsec[:, 1+flavor], left=0, right=0) * energies
+                    # Fluence (flux integrated over time bin) in cm^-2 
+                    # (must be divided by 0.2 MeV to compensate the multiplication in generate_time_series)
+                    fluxs = np.interp(energies, flux[:, 0], flux[:, 1], left=0, right=0)/2e-4
+                    # Rate computation
+                    rates = xsecs * 1e-38 * fluxs * float(TargetMass) * 1./1.661e-33 * binsize
+                    # Weighting
+                    weighted_rates = rates * channel.weight
+                    # Write to dictionary
+                    key_unweighted = (channel.name,'unsmeared','unweighted')
+                    key_weighted = (channel.name,'unsmeared','weighted')
+                    if key_unweighted in data.keys():
+                        data[key_unweighted] += rates
+                        data[key_weighted] += weighted_rates
+                    else:
+                        data[key_unweighted] = rates
+                        data[key_weighted] = weighted_rates
         #collect everything to pandas DataFrame
         df = pd.DataFrame(data, index = energies)
         df.index.rename('E', inplace=True)
