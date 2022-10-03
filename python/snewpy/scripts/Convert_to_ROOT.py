@@ -22,7 +22,8 @@ import ROOT
 
 # Get the path to input files (command line argument). Default is current folder
 parser = argparse.ArgumentParser()
-parser.add_argument('path', help='Path to tarball containing collated SNEWPY outputs')
+parser.add_argument('-path', help='Path to tarball containing collated SNEWPY outputs')
+parser.add_argument('-flux', help='If true, store flux files in ROOT', default=False)
 args = parser.parse_args()
 
 tarball_path = args.path
@@ -37,7 +38,8 @@ with TemporaryDirectory(prefix='snowglobes') as tempdir:
     with tarfile.open(tarball_path) as tar:
         tar.extractall(tempdir)
 
-    flux_files = list(Path(tempdir).glob('*/Collated*.dat'))
+    fname= "*.dat" if args.flux else "Collated*.dat"
+    flux_files = list(Path(tempdir).glob(f'*/{fname}'))
     first = True
     for flux_file in flux_files:
         flux_root = flux_file.stem
