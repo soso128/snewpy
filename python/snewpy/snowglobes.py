@@ -40,7 +40,7 @@ from snewpy.snowglobes_interface import SNOwGLoBES, SimpleRate
 
 logger = logging.getLogger(__name__)
 
-def generate_time_series(model_path, model_type, transformation_type, d, output_filename=None, ntbins=30, deltat=None, snmodel_dict={},
+def generate_time_series(model_path, model_type, transformation_type, d, output_filename=None, ntbins=30, tmin=None, tmax=None, deltat=None, snmodel_dict={},
                         output_dir=None, nudecay=False, rbar=1.0, zeta=1.0):
     """Generate time series files in SNOwGLoBES format.
 
@@ -61,6 +61,10 @@ def generate_time_series(model_path, model_type, transformation_type, d, output_
         Name of output file. If ``None``, will be based on input file name.
     ntbins : int
         Number of time slices. Will be ignored if ``deltat`` is also given.
+    tmin   : astropy.Quantity or None
+        Start time for rate and flux computation
+    tmax   : astropy.Quantity or None
+        End time for rate and flux computation
     deltat : astropy.Quantity or None
         Length of time slices.
     snmodel_dict : dict
@@ -89,6 +93,8 @@ def generate_time_series(model_path, model_type, transformation_type, d, output_
     snmodel = model_class(model_path, **snmodel_dict)
 
     # Subsample the model time. Default to 30 time slices.
+    tmin = snmodel.get_time()[0] if tmin is None else tmin
+    tmax = snmodel.get_time()[-1] if tmax is None else tmax
     if deltat is not None:
         dt = deltat if  deltat < (tmax - tmin) else tmax-tmin-(1e-6*u.s)
         ntbins = int((tmax-tmin)/dt)
