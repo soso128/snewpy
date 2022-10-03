@@ -11,6 +11,9 @@ from scipy.special import loggamma
 from snewpy.neutrino import Flavor
 from functools import wraps
 
+from snewpy.neutrino import MassHierarchy, MixingParameters
+import snewpy.nudecay as nd
+
 
 def _wrap_init(init, check):
     @wraps(init)
@@ -267,6 +270,68 @@ class PinchedModel(SupernovaModel):
                     - loggamma(1+a) + a*np.log(E) - (1+a)*(E/Ea)) / (u.erg * u.s)
 
         return initialspectra
+
+    def get_transformed_spectra(self, t, E, flavor_xform, nudecay=False, rbar = 1.0, zeta = 1.0):
+        """Get neutrino spectra after applying oscillation.
+
+        Parameters
+        ----------
+        t : astropy.Quantity
+        Time to evaluate initial and oscillated spectra.
+        E : astropy.Quantity or ndarray of astropy.Quantity
+        Energies to evaluate the initial and oscillated spectra.
+        flavor_xform : FlavorTransformation
+        An instance from the flavor_transformation module.
+        nudecay: bool (default: False)
+        If true, implement energy-dependent neutrino decay
+        rbar: float (default: 1.0)
+        distance to supernova times decay width at 10MeV (dimensionless)
+        zeta: float (default: 1.0)
+        Visible neutrino fraction
+
+        Returns
+        -------
+        dict
+        Dictionary of transformed spectra, keyed by neutrino flavor.
+        """
+        transformed_spectra = super().get_transformed_spectra(t, E, flavor_xform)
+        # initial_spectra = self.get_initial_spectra(t, E)
+        if nudecay:
+            eref = 10.0 * u.MeV
+            eref_erg = eref.to('erg')
+            ecoeff = eref_erg/u.erg
+            L_e  = get_value(np.interp(t, self.time, self.luminosity[Flavor.NU_E].to('erg/s')))
+            Ea_e = get_value(np.interp(t, self.time, self.meanE[Flavor.NU_E].to('erg')))
+            a_e  = np.interp(t, self.time, self.pinch[Flavor.NU_E])
+            L_x  = get_value(np.interp(t, self.time, self.luminosity[Flavor.NU_X].to('erg/s')))
+            Ea_x = get_value(np.interp(t, self.time, self.meanE[Flavor.NU_X].to('erg')))
+            a_x  = np.interp(t, self.time, self.pinch[Flavor.NU_X])
+            # print(Ea_e, eref, Ea_e/eref, eref_erg)
+            heavy = nd.heaviest_eigenstate(rbar, E/eref_erg, [L_e, L_x], [Ea_e/ecoeff, Ea_x/ecoeff], [a_e, a_x])/ecoeff**2 / (u.erg * u.s)
+            medium = nd.middle_eigenstate(E/eref_erg, [L_e, L_x], [Ea_e/ecoeff, Ea_x/ecoeff], [a_e, a_x])/ecoeff**2 / (u.erg * u.s)
+            light = nd.lightest_eigenstate(rbar, E/eref_erg, [L_e, L_x], [Ea_e/ecoeff, Ea_x/ecoeff], [a_e, a_x], zeta)/ecoeff**2 / (u.erg * u.s)
+
+            # Get mixing parameters
+            mass_ordering  = flavor_xform.mass_order
+            theta12, theta13, theta23 = MixingParameters(mass_ordering).get_mixing_angles()
+            Ue3_2 = np.sin(theta13)**2
+            Ue2_2 = np.sin(theta12)**2 * np.cos(theta13)**2
+            Ue1_2 = np.cos(theta12)**2 * np.cos(theta13)**2
+            if mass_ordering == MassHierarchy.NORMAL:
+                fe_final = Ue3_2 * heavy + Ue2_2 * medium + Ue1_2 * light
+                fx_final = (1-Ue3_2) * heavy + (1-Ue2_2) * medium + (1-Ue1_2) * light
+                transformed_spectra[Flavor.NU_E] = fe_final
+                transformed_spectra[Flavor.NU_X] = fx_final
+            else:
+                fe_final = Ue2_2 * heavy + Ue1_2 * medium + Ue3_2 * light
+                fx_final = (1-Ue2_2)/2 * heavy + (1-Ue1_2)/2 * medium + (1-Ue3_2)/2 * light
+                # print(heavy[30], light[30])
+                # print(transformed_spectra[Flavor.NU_E][30], fe_final[30], transformed_spectra[Flavor.NU_X][30], fx_final[30])
+                # print(fe_final.sum() + fx_final.sum()*2, transformed_spectra[Flavor.NU_E].sum() + transformed_spectra[Flavor.NU_X].sum()*2)
+                transformed_spectra[Flavor.NU_E] = fe_final
+                transformed_spectra[Flavor.NU_X] = fx_final
+
+        return transformed_spectra   
 
 
 class _GarchingArchiveModel(PinchedModel):
