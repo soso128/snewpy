@@ -23,7 +23,7 @@ import ROOT
 # Get the path to input files (command line argument). Default is current folder
 parser = argparse.ArgumentParser()
 parser.add_argument('-path', help='Path to tarball containing collated SNEWPY outputs')
-parser.add_argument('-flux', help='If true, store flux files in ROOT', default=False)
+parser.add_argument('-flux', help='If true, store flux files in ROOT', default=0, type=int)
 args = parser.parse_args()
 
 tarball_path = args.path
@@ -38,8 +38,8 @@ with TemporaryDirectory(prefix='snowglobes') as tempdir:
     with tarfile.open(tarball_path) as tar:
         tar.extractall(tempdir)
 
-    fname= "*.dat" if args.flux else "Collated*.dat"
-    flux_files = list(Path(tempdir).glob(f'*/{fname}'))
+    fname= "*.dat" if args.flux else '*/Collated*.dat'
+    flux_files = list(Path(tempdir).glob(fname))
     first = True
     for flux_file in flux_files:
         flux_root = flux_file.stem
@@ -53,7 +53,7 @@ with TemporaryDirectory(prefix='snowglobes') as tempdir:
             first = False
         # Get column names
         with open(flux_file) as fin:
-            column_names = fin.readline().split()[1:]
+            column_names = fin.readline().split()[1:] if not args.flux else fin.readlines()[1].split()[2:]
         # Find general name for flux file as well as value of time bin
         flux_start, flux_end = flux_root.split('tbin')
         flux_split = flux_end.split('.')
