@@ -28,7 +28,7 @@ except ImportError:
     pass
 
 from snewpy.neutrino import Flavor
-from .base import PinchedModel, SupernovaModel, _GarchingArchiveModel, get_value
+from .base import PinchedModel, SupernovaModel, _GarchingArchiveModel, _SegerlundModel, get_value
 
 class BugliModel(PinchedModel):
     """Subclass that reads models in the format used by M. Bugli"""
@@ -179,6 +179,11 @@ class Sukhbold_2015(PinchedModel):
 class Tamborra_2014(_GarchingArchiveModel):
     """Model based on 3D simulations from `Tamborra et al., PRD 90:045032, 2014 <https://arxiv.org/abs/1406.0006>`_.
     Data files are from the `Garching Supernova Archive`_.
+    """
+    pass
+
+class Segerlund_2020(_SegerlundModel):
+    """Model based on simulations from Segerlund et al
     """
     pass
 

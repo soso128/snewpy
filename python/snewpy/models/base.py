@@ -310,6 +310,8 @@ class PinchedModel(SupernovaModel):
             heavy = nd.heaviest_eigenstate(rbar, E/eref_erg, [L_e, L_x], [Ea_e/ecoeff, Ea_x/ecoeff], [a_e, a_x])/ecoeff**2 / (u.erg * u.s)
             medium = nd.middle_eigenstate(E/eref_erg, [L_e, L_x], [Ea_e/ecoeff, Ea_x/ecoeff], [a_e, a_x])/ecoeff**2 / (u.erg * u.s)
             light = nd.lightest_eigenstate(rbar, E/eref_erg, [L_e, L_x], [Ea_e/ecoeff, Ea_x/ecoeff], [a_e, a_x], zeta)/ecoeff**2 / (u.erg * u.s)
+            light = transformed_spectra[Flavor.NU_E] + transformed_spectra[Flavor.NU_X]
+            heavy = np.zeros(heavy.shape) / (u.erg * u.s)
 
             # Get mixing parameters
             mass_ordering  = flavor_xform.mass_order
@@ -384,6 +386,75 @@ class _GarchingArchiveModel(PinchedModel):
                 mergtab[_ename].fill_value = 0.
                 mergtab[_aname].fill_value = 0.
         simtab = mergtab.filled()
+        super().__init__(simtab, metadata)
+
+class _SegerlundModel(PinchedModel):
+    """Subclass that reads models in the format used in the `Garching Supernova Archive <https://wwwmpa.mpa-garching.mpg.de/ccsnarchive/>`_."""
+    def __init__(self, filename, mass=27.0):
+        """Initialize model
+
+        Parameters
+        ----------
+        filename : str
+            Absolute or relative path to file prefix, we add nue/nuebar/nux.
+        mass : float
+            Progenitor mass in units of Msun.
+        """
+
+        # Store model metadata.
+        self.progenitor_mass = mass
+        self.filename = os.path.basename(filename) + f"s{mass:.1f}_INS_small.dat"
+        _filename = filename + "/" +  self.filename
+        metadata = {
+            'Progenitor mass':self.progenitor_mass
+            }
+        # Read through the several ASCII files for the chosen simulation and
+        # merge the data into one giant table.
+        mergtab = None
+        _lnames = []
+        _enames = []
+        _e2names = []
+        _anames = []
+        for flavor in Flavor:
+            if flavor == Flavor.NU_X_BAR: continue
+            _flav = flavor.name
+            _lnames += ['L_{}'.format(_flav)]
+            _enames  += ['E_{}'.format(_flav)]
+            _e2names += ['E2_{}'.format(_flav)]
+            _anames  += ['ALPHA_{}'.format(_flav)]
+        simtab = Table.read(_filename,
+                            names=['TIME', 'shock'] + _lnames + _enames + _e2names,
+                            format='ascii')
+        t_bounce = simtab['TIME'][simtab['shock']>0.00001][0]
+        del simtab['shock']
+        simtab['TIME'] -= t_bounce
+        simtab['TIME'].unit = 's'
+
+        simtab[f'L_{flavor.NU_X.name}'] /= 4 # Luminosity for one flavor
+        simtab[f'L_{flavor.NU_X_BAR.name}'] = simtab[f'L_{flavor.NU_X.name}']
+        simtab[f'E_{flavor.NU_X_BAR.name}'] = simtab[f'E_{flavor.NU_X.name}']
+        simtab[f'E2_{flavor.NU_X_BAR.name}'] = simtab[f'E2_{flavor.NU_X.name}']
+        _lnames.append(f'L_{flavor.NU_X_BAR.name}')
+        _enames.append(f'E_{flavor.NU_X_BAR.name}')
+        _e2names.append(f'E2_{flavor.NU_X_BAR.name}')
+        _anames.append(f'ALPHA_{flavor.NU_X_BAR.name}')
+
+        # Select line of sight
+        maxrow = -1
+        for _lname,_ename,_e2name,_aname in zip(_lnames,_enames,_e2names,_anames):
+            simtab[_lname].unit = '1e51 erg/s'
+            simtab[_aname] = (2*simtab[_ename]**2 - simtab[_e2name]**2) / (simtab[_e2name]**2 - simtab[_ename]**2)
+            maxrow = max(np.where(simtab[_aname]>0)[0][0],maxrow)
+            simtab[_ename].unit = 'MeV'
+            del simtab[_e2name]
+
+            if mergtab is None:
+                mergtab = simtab
+            mergtab[_lname].fill_value = 0.
+            mergtab[_ename].fill_value = 0.
+            mergtab[_aname].fill_value = 0.
+        simtab = mergtab.filled()
+        simtab = simtab[maxrow:]
         super().__init__(simtab, metadata)
 
 
