@@ -324,23 +324,22 @@ class PinchedModel(SupernovaModel):
         Dictionary of transformed spectra, keyed by neutrino flavor.
         """
         transformed_spectra = super().get_transformed_spectra(t, E, flavor_xform)
-        # initial_spectra = self.get_initial_spectra(t, E)
         if nudecay:
+            # Define characteristic energy, convert to right unit
             eref = 10.0 * u.MeV
             eref_erg = eref.to('erg')
             ecoeff = eref_erg/u.erg
+            # Get the spectrum characteristics for the two neutrino flavor types
             L_e  = get_value(np.interp(t, self.time, self.luminosity[Flavor.NU_E].to('erg/s')))
             Ea_e = get_value(np.interp(t, self.time, self.meanE[Flavor.NU_E].to('erg')))
             a_e  = np.interp(t, self.time, self.pinch[Flavor.NU_E])
             L_x  = get_value(np.interp(t, self.time, self.luminosity[Flavor.NU_X].to('erg/s')))
             Ea_x = get_value(np.interp(t, self.time, self.meanE[Flavor.NU_X].to('erg')))
             a_x  = np.interp(t, self.time, self.pinch[Flavor.NU_X])
-            # print(Ea_e, eref, Ea_e/eref, eref_erg)
+            # Solve the transport equations for the mass eigenstates
             heavy = nd.heaviest_eigenstate(rbar, E/eref_erg, [L_e, L_x], [Ea_e/ecoeff, Ea_x/ecoeff], [a_e, a_x])/ecoeff**2 / (u.erg * u.s)
             medium = nd.middle_eigenstate(E/eref_erg, [L_e, L_x], [Ea_e/ecoeff, Ea_x/ecoeff], [a_e, a_x])/ecoeff**2 / (u.erg * u.s)
             light = nd.lightest_eigenstate(rbar, E/eref_erg, [L_e, L_x], [Ea_e/ecoeff, Ea_x/ecoeff], [a_e, a_x], zeta)/ecoeff**2 / (u.erg * u.s)
-            light = transformed_spectra[Flavor.NU_E] + transformed_spectra[Flavor.NU_X]
-            heavy = np.zeros(heavy.shape) / (u.erg * u.s)
 
             # Get mixing parameters
             mass_ordering  = flavor_xform.mass_order
@@ -356,9 +355,6 @@ class PinchedModel(SupernovaModel):
             else:
                 fe_final = Ue2_2 * heavy + Ue1_2 * medium + Ue3_2 * light
                 fx_final = (1-Ue2_2)/2 * heavy + (1-Ue1_2)/2 * medium + (1-Ue3_2)/2 * light
-                # print(heavy[30], light[30])
-                # print(transformed_spectra[Flavor.NU_E][30], fe_final[30], transformed_spectra[Flavor.NU_X][30], fx_final[30])
-                # print(fe_final.sum() + fx_final.sum()*2, transformed_spectra[Flavor.NU_E].sum() + transformed_spectra[Flavor.NU_X].sum()*2)
                 transformed_spectra[Flavor.NU_E] = fe_final
                 transformed_spectra[Flavor.NU_X] = fx_final
 
