@@ -169,6 +169,8 @@ class SimpleRate():
             flavor_index = 0 if 'e' in channel.flavor else (1 if 'm' in channel.flavor else 2)
             flavor = flavor_index + (3 if channel.parity == '-' else 0)
             flux = fluxes[:, (0,1+flavor)]
+            if "all" in channel.flavor:
+                flux[:,1] = fluxes[:,1:].sum(axis=1)
             binsize = energies[1] - energies[0]
             # Cross-section in 10^-38 cm^2
             xsecs = np.interp(np.log(energies)/np.log(10), xsec[:, 0], xsec[:, 1+flavor], left=0, right=0) * energies
