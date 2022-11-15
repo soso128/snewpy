@@ -94,9 +94,9 @@ def generate_time_series(model_path, model_type, transformation_type, d, output_
 
     # Subsample the model time. Default to 30 time slices.
     tmodel_min = snmodel.get_time()[0]
-    tmodel_max = snmodel.get_time()[0]
-    tmin = snmodel_min if tmin is None or tmin < tmodel_min else tmin
-    tmax = snmodel_max if tmax is None or tmax > tmodel_max else tmax
+    tmodel_max = snmodel.get_time()[-1]
+    tmin = tmodel_min if tmin is None or tmin < tmodel_min else tmin
+    tmax = tmodel_max if tmax is None or tmax > tmodel_max else tmax
     if deltat is not None:
         dt = deltat if  deltat < (tmax - tmin) else tmax-tmin-(1e-6*u.s)
         ntbins = int((tmax-tmin)/dt)

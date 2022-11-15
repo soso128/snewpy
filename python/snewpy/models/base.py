@@ -321,7 +321,7 @@ class PinchedModel(SupernovaModel):
             Ue1_2 = np.cos(theta12)**2 * np.cos(theta13)**2
             if mass_ordering == MassHierarchy.NORMAL:
                 fe_final = Ue3_2 * heavy + Ue2_2 * medium + Ue1_2 * light
-                fx_final = (1-Ue3_2) * heavy + (1-Ue2_2) * medium + (1-Ue1_2) * light
+                fx_final = (1-Ue3_2)/2 * heavy + (1-Ue2_2)/2 * medium + (1-Ue1_2)/2 * light
                 transformed_spectra[Flavor.NU_E] = fe_final
                 transformed_spectra[Flavor.NU_X] = fx_final
             else:
