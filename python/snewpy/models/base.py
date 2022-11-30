@@ -192,6 +192,31 @@ def get_value(x):
         return x.value
     return x
 
+def get_decayed_eigenstates(rbar, zeta, En, lumi, emean, alpha, ecoeff, model="phi0"):
+    heavy, medium, light, aheavy, amedium, alight = None, None, None, None, None, None
+    if model == "phi0":
+        heavy = nd.heaviest_eigenstate(rbar, En, lumi[0], emean[0], alpha[0])/ecoeff**2 / (u.erg * u.s)
+        medium = nd.middle_eigenstate(En, lumi[2], emean[2], alpha[2])/ecoeff**2 / (u.erg * u.s)
+        light = nd.lightest_eigenstate(rbar, En, lumi[[0,2]], emean[[0,2]], alpha[[0,2]], zeta)/ecoeff**2 / (u.erg * u.s)
+        aheavy = nd.heaviest_eigenstate(rbar, En, lumi[3], emean[3], alpha[3])/ecoeff**2 / (u.erg * u.s)
+        amedium = nd.middle_eigenstate(En, lumi[3], emean[3], alpha[3])/ecoeff**2 / (u.erg * u.s)
+        alight = nd.lightest_eigenstate(rbar, En, lumi[[3,1]], emean[[3,1]], alpha[[3,1]], zeta)/ecoeff**2 / (u.erg * u.s)
+    if model == "phi2":
+        heavy = nd.heaviest_eigenstate(rbar, En, lumi[0], emean[0], alpha[0])/ecoeff**2 / (u.erg * u.s)
+        medium = nd.middle_eigenstate(En, lumi[2], emean[2], alpha[2])/ecoeff**2 / (u.erg * u.s)
+        light = nd.lightest_eigenstate(rbar, En, lumi[[3,2]], emean[[3,2]], alpha[[3,2]], zeta, flip=True)/ecoeff**2 / (u.erg * u.s)
+        aheavy = nd.heaviest_eigenstate(rbar, En, lumi[3], emean[3], alpha[3])/ecoeff**2 / (u.erg * u.s)
+        amedium = nd.middle_eigenstate(En, lumi[3], emean[3], alpha[3])/ecoeff**2 / (u.erg * u.s)
+        alight = nd.lightest_eigenstate(rbar, En, lumi[[0,1]], emean[[0,1]], alpha[[0,1]], zeta, flip=True)/ecoeff**2 / (u.erg * u.s)
+    if model == "majorana":
+        heavy = nd.heaviest_eigenstate(rbar, En, lumi[0], emean[0], alpha[0], majorana=True)/ecoeff**2 / (u.erg * u.s)
+        medium = nd.middle_eigenstate(En, lumi[2], emean[2], alpha[2])/ecoeff**2 / (u.erg * u.s)
+        light = nd.lightest_eigenstate(rbar, En, lumi[[0,3,2]], emean[[0,3,2]], alpha[[0,3,2]], zeta)/ecoeff**2 / (u.erg * u.s)
+        aheavy = nd.heaviest_eigenstate(rbar, En, lumi[3], emean[3], alpha[3], majorana=True)/ecoeff**2 / (u.erg * u.s)
+        amedium = nd.middle_eigenstate(En, lumi[3], emean[3], alpha[3])/ecoeff**2 / (u.erg * u.s)
+        alight = nd.lightest_eigenstate(rbar, En, lumi[[3,0,3]], emean[[3,0,3]], alpha[[3,0,3]], zeta)/ecoeff**2 / (u.erg * u.s)
+    return heavy, medium, light, aheavy, amedium, alight
+
 class PinchedModel(SupernovaModel):
     """Subclass that contains spectra/luminosity pinches"""
     def __init__(self, simtab, metadata):
@@ -271,7 +296,7 @@ class PinchedModel(SupernovaModel):
 
         return initialspectra
 
-    def get_transformed_spectra(self, t, E, flavor_xform, nudecay=False, rbar = 1.0, zeta = 1.0):
+    def get_transformed_spectra(self, t, E, flavor_xform, nudecay=False, rbar = 1.0, zeta = 1.0, model="phi0"):
         """Get neutrino spectra after applying oscillation.
 
         Parameters
@@ -300,18 +325,26 @@ class PinchedModel(SupernovaModel):
             eref = 10.0 * u.MeV
             eref_erg = eref.to('erg')
             ecoeff = eref_erg/u.erg
+
+            # Neutrinos
             L_e  = get_value(np.interp(t, self.time, self.luminosity[Flavor.NU_E].to('erg/s')))
             Ea_e = get_value(np.interp(t, self.time, self.meanE[Flavor.NU_E].to('erg')))
             a_e  = np.interp(t, self.time, self.pinch[Flavor.NU_E])
             L_x  = get_value(np.interp(t, self.time, self.luminosity[Flavor.NU_X].to('erg/s')))
             Ea_x = get_value(np.interp(t, self.time, self.meanE[Flavor.NU_X].to('erg')))
             a_x  = np.interp(t, self.time, self.pinch[Flavor.NU_X])
-            # print(Ea_e, eref, Ea_e/eref, eref_erg)
-            heavy = nd.heaviest_eigenstate(rbar, E/eref_erg, [L_e, L_x], [Ea_e/ecoeff, Ea_x/ecoeff], [a_e, a_x])/ecoeff**2 / (u.erg * u.s)
-            medium = nd.middle_eigenstate(E/eref_erg, [L_e, L_x], [Ea_e/ecoeff, Ea_x/ecoeff], [a_e, a_x])/ecoeff**2 / (u.erg * u.s)
-            light = nd.lightest_eigenstate(rbar, E/eref_erg, [L_e, L_x], [Ea_e/ecoeff, Ea_x/ecoeff], [a_e, a_x], zeta)/ecoeff**2 / (u.erg * u.s)
-            # light = transformed_spectra[Flavor.NU_E] + transformed_spectra[Flavor.NU_X]
-            # heavy = np.zeros(heavy.shape) / (u.erg * u.s)
+            # Antineutrinos
+            L_ebar  = get_value(np.interp(t, self.time, self.luminosity[Flavor.NU_E_BAR].to('erg/s')))
+            Ea_ebar = get_value(np.interp(t, self.time, self.meanE[Flavor.NU_E_BAR].to('erg')))
+            a_ebar  = np.interp(t, self.time, self.pinch[Flavor.NU_E_BAR])
+            L_xbar  = get_value(np.interp(t, self.time, self.luminosity[Flavor.NU_X_BAR].to('erg/s')))
+            Ea_xbar = get_value(np.interp(t, self.time, self.meanE[Flavor.NU_X_BAR].to('erg')))
+            a_xbar  = np.interp(t, self.time, self.pinch[Flavor.NU_X_BAR])
+            lumi = np.array([L_e, L_ebar, L_x, L_xbar])
+            emean = np.array([Ea_e, Ea_ebar, Ea_x, Ea_xbar])/ecoeff
+            alpha = np.array([a_e, a_ebar, a_x, a_xbar])
+
+            heavy, medium, light, aheavy, amedium, alight = get_decayed_eigenstates(rbar, zeta, E/eref_erg, lumi, emean, alpha, ecoeff, model=model)
 
             # Get mixing parameters
             mass_ordering  = flavor_xform.mass_order
@@ -319,16 +352,22 @@ class PinchedModel(SupernovaModel):
             Ue3_2 = np.sin(theta13)**2
             Ue2_2 = np.sin(theta12)**2 * np.cos(theta13)**2
             Ue1_2 = np.cos(theta12)**2 * np.cos(theta13)**2
+            fe_final, fx_final, febar_final, fxbar_final = None, None, None, None
             if mass_ordering == MassHierarchy.NORMAL:
                 fe_final = Ue3_2 * heavy + Ue2_2 * medium + Ue1_2 * light
                 fx_final = (1-Ue3_2)/2 * heavy + (1-Ue2_2)/2 * medium + (1-Ue1_2)/2 * light
-                transformed_spectra[Flavor.NU_E] = fe_final
-                transformed_spectra[Flavor.NU_X] = fx_final
+                febar_final = Ue3_2 * aheavy + Ue2_2 * amedium + Ue1_2 * alight
+                fxbar_final = (1-Ue3_2)/2 * aheavy + (1-Ue2_2)/2 * amedium + (1-Ue1_2)/2 * alight
             else:
                 fe_final = Ue2_2 * heavy + Ue1_2 * medium + Ue3_2 * light
                 fx_final = (1-Ue2_2)/2 * heavy + (1-Ue1_2)/2 * medium + (1-Ue3_2)/2 * light
-                transformed_spectra[Flavor.NU_E] = fe_final
-                transformed_spectra[Flavor.NU_X] = fx_final
+                febar_final = Ue2_2 * aheavy + Ue1_2 * amedium + Ue3_2 * alight
+                fxbar_final = (1-Ue2_2)/2 * aheavy + (1-Ue1_2)/2 * amedium + (1-Ue3_2)/2 * alight
+
+            transformed_spectra[Flavor.NU_E] = fe_final
+            transformed_spectra[Flavor.NU_X] = fx_final
+            transformed_spectra[Flavor.NU_E_BAR] = febar_final
+            transformed_spectra[Flavor.NU_X_BAR] = fxbar_final
 
         return transformed_spectra   
 

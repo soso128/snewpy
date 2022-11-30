@@ -2,37 +2,49 @@ from pylab import *
 from scipy.integrate import quad, quad_vec
 from scipy.special import gammaincc,gamma
 
-def lightest_integrand(x, eps, rbar, emean, alpha, rinit=0):
+def lightest_integrand(x, eps, rbar, emean, alpha, rinit=0, flip=False):
     if alpha <= 2:
         raise ValueError(f"Ill-defined results for alpha <= 2 (here alpha={alpha})")
-    return x**(alpha-2) * (1 - exp(-(rbar - rinit)/(x*eps))) * exp(-(1+alpha)*x*eps/emean)
+    res = x**(alpha-2) * (1 - exp(-(rbar - rinit)/(x*eps))) * exp(-(1+alpha)*x*eps/emean)
+    if flip:
+        return res * (x - 1)
+    else:
+        return res
 
 
-def lightest_integral(rbar, eps, emean, alpha, rinit=0):
-    return quad_vec(lambda x: lightest_integrand(x,eps,rbar,emean,alpha,rinit), 1, 40)[0]
+def lightest_integral(rbar, eps, emean, alpha, rinit=0, flip=False):
+    return quad_vec(lambda x: lightest_integrand(x,eps,rbar,emean,alpha,rinit,flip=flip), 1, 40)[0]
+
+def pinched_spectrum(eps, lumi, emean, alpha):
+    Ni = (alpha+1)**(alpha+1)/(emean * gamma(alpha+1))/emean
+    return lumi * Ni * (eps/emean)**alpha * exp(-(alpha+1)*eps/emean)
+
+def decay_spectrum(rbar, eps, lumi, emean, alpha, rinit=0, flip=False):
+    Ni = (alpha+1)**(alpha+1)/(emean * gamma(alpha+1))/emean
+    return Ni*lumi* (eps/emean)**alpha * lightest_integral(rbar,eps,emean,alpha,rinit,flip=flip)
 
 # The lightest eigenstate is fed by the decays of the heaviest state
-# 0 = electron, 1 = mu, tau
-def lightest_eigenstate(rbar, eps, lumi, emean, alpha, zeta, rinit=0):
+# If Dirac, [0] = heaviest, [1] = lightest
+# If Majorana, [0] = helicity conserving, [1] = helicity flipping, [2] = lightest state
+def lightest_eigenstate(rbar, eps, lumi, emean, alpha, zeta, rinit=0, flip=False):
     Ni0 = (alpha[0]+1)**(alpha[0]+1)/(emean[0] * gamma(alpha[0]+1))/emean[0]
-    Ni1 = (alpha[1]+1)**(alpha[1]+1)/(emean[1] * gamma(alpha[1]+1))/emean[1]
-    finit = lumi[1] * Ni1 * (eps/emean[1])**alpha[1] * exp(-(alpha[1]+1)*eps/emean[1])
-    # print(Ni0, Ni1, finit, eps, emean[0], alpha[0], rbar, rinit)
-    # print(finit[30], (2*zeta*Ni0*lumi[0]* (eps/emean[0])**alpha[0] * lightest_integral(rbar,eps,emean[0],alpha[0],rinit))[30])
-    return 2*zeta*Ni0*lumi[0]* (eps/emean[0])**alpha[0] * lightest_integral(rbar,eps,emean[0],alpha[0],rinit) + finit
-
+    finit = pinched_spectrum(eps, lumi[-1], emean[-1], alpha[-1])
+    if len(lumi) == 2:
+        zeta_coeff = 1 - zeta if flip else zeta
+        return 2*zeta_coeff * sum(decay_spectrum(rbar, eps, ll, em, alph, flip=flip) for ll,em,alph in zip(lumi[:-1],emean[:-1],alpha[:-1])) + finit
+    else:
+        not_flipped = 2*zeta*decay_spectrum(rbar, eps, lumi[0], emean[0], alpha[0])
+        flipped = 2*(1-zeta)*decay_spectrum(rbar, eps, lumi[1], emean[1], alpha[1], flip=True)
+        return finit + flipped + not_flipped
 
 # The heaviest eigenstate decays away
-def heaviest_eigenstate(rbar, eps, lumi, emean, alpha, rinit=0):
-    Ni0 = (alpha[0]+1)**(alpha[0]+1)/(emean[0] * gamma(alpha[0]+1))/emean[0]
-    f0 = lumi[0] * Ni0 * (eps/emean[0])**alpha[0] * exp(-(alpha[0]+1)*eps/emean[0])
-    # print("heavy: ", f0[30], exp(-(rbar - rinit)/eps)[30])
-    return f0*exp(-(rbar - rinit)/eps)
+def heaviest_eigenstate(rbar, eps, lumi, emean, alpha, rinit=0, majorana=False):
+    f0 = pinched_spectrum(eps, lumi, emean, alpha)
+    return f0*exp(-(2 if majorana else 1) * (rbar - rinit)/eps) 
 
 # The eigenstate in the middle does not evolve in vacuum
 def middle_eigenstate(eps, lumi, emean, alpha):
-    Ni1 = (alpha[1]+1)**(alpha[1]+1)/(emean[1] * gamma(alpha[1]+1))/emean[1]
-    return lumi[1] * Ni1 * (eps/emean[1])**alpha[1] * exp(-(alpha[1]+1)*eps/emean[1])
+    return pinched_spectrum(eps, lumi, emean, alpha)
 
 def final_states(rbar, eps, lumi, emean, alpha, zeta, normal_ordering=True, rinit=0):
     heavy = heaviest_eigenstate(rbar, eps, lumi, emean, alpha, rinit)

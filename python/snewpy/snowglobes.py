@@ -41,7 +41,7 @@ from snewpy.snowglobes_interface import SimpleRate
 logger = logging.getLogger(__name__)
 
 def generate_time_series(model_path, model_type, transformation_type, d, output_filename=None, ntbins=30, tmin=None, tmax=None, deltat=None, snmodel_dict={},
-                        output_dir=None, nudecay=False, rbar=1.0, zeta=1.0):
+                        output_dir=None, nudecay=False, rbar=1.0, zeta=1.0, decay_model="phi0"):
     """Generate time series files in SNOwGLoBES format.
 
     This version will subsample the times in a supernova model, produce energy
@@ -124,7 +124,7 @@ def generate_time_series(model_path, model_type, transformation_type, d, output_
 
         # Loop over sampled times.
         for i, t in enumerate(tqdm(times)):
-            osc_spectra = snmodel.get_transformed_spectra(t, energy, flavor_transformation, nudecay, rbar, zeta)
+            osc_spectra = snmodel.get_transformed_spectra(t, energy, flavor_transformation, nudecay, rbar, zeta, decay_model)
 
             osc_fluence = {}
             table = []
