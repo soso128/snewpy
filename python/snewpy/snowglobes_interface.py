@@ -178,7 +178,9 @@ class SimpleRate():
             # (must be divided by 0.2 MeV to compensate the multiplication in generate_time_series)
             fluxs = np.interp(energies, flux[:, 0], flux[:, 1], left=0, right=0)/2e-4
             # Rate computation
-            rates = xsecs * 1e-38 * fluxs * float(TargetMass) * 1./1.661e-33 * binsize
+            flavor_factor = 3 if channel.flavor == "all" else 1
+            parity_factor = 2 if channel.parity == "all" else 1
+            rates = xsecs * 1e-38 * fluxs * float(TargetMass) * 1./1.661e-33 * binsize * flavor_factor * parity_factor
             # Weighting
             weighted_rates = rates * channel.weight
             # Write to dictionary
