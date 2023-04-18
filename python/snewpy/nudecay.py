@@ -3,8 +3,8 @@ from scipy.integrate import quad, quad_vec
 from scipy.special import gammaincc,gamma
 
 def lightest_integrand(x, eps, rbar, emean, alpha, rinit=0, flip=False):
-    if alpha <= 2:
-        raise ValueError(f"Ill-defined results for alpha <= 2 (here alpha={alpha})")
+    # if alpha <= 2:
+    #   raise ValueError(f"Ill-defined results for alpha <= 2 (here alpha={alpha})")
     res = x**(alpha-2) * (1 - exp(-(rbar - rinit)/(x*eps))) * exp(-(1+alpha)*x*eps/emean)
     if flip:
         return res * (x - 1)
