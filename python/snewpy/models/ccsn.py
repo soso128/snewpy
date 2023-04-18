@@ -33,7 +33,7 @@ from .base import PinchedModel, SupernovaModel, _GarchingArchiveModel, _Segerlun
 class BugliModel(PinchedModel):
     """Subclass that reads models in the format used by M. Bugli"""
 
-    def __init__(self, filename, los = "equator"):
+    def __init__(self, filename, los="equator", profile="sph", r0=1e3, omega=2, n_dim=3):
         """Initialize model.
 
         Parameters
@@ -47,9 +47,15 @@ class BugliModel(PinchedModel):
         # Store model metadata.
         self.filename = os.path.basename(filename)
         self.los = los
+        self.profile = profile
+        self.r0 = r0
+        self.omega = omega
         metadata = {
             'File name':self.filename,
             'LOS':self.los,
+            'profile':self.profile,
+            'r0':self.r0,
+            'omega':self.omega
             }
 
         # Read through the several ASCII files for the chosen simulation and
@@ -59,7 +65,11 @@ class BugliModel(PinchedModel):
         _enames = []
         _e2names = []
         _anames = []
-        _filename = filename + '_' + los + ".dat"
+        rname = f"{r0:.0e}".replace("+0", "")
+        omeganame = f"0{omega*10:.0f}" if omega < 1 else f"{omega:.0f}"
+        fname = f"leak_norotation_{n_dim}d" if omega < 1e-6 else f"leak_{profile}_r{rname}_omega{omeganame}_{n_dim}d"
+        _filename = f"{filename}/{fname}/{fname}_snewpy_{los}.dat"
+        # _filename = filename + '_' + los + ".dat"
         for flavor in Flavor:
             if flavor == Flavor.NU_X_BAR: continue
             _flav = flavor.name
