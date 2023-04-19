@@ -1,3 +1,4 @@
+import itertools as it
 import os
 from abc import ABC, abstractmethod
 from warnings import warn
@@ -5,10 +6,13 @@ from warnings import warn
 import numpy as np
 from astropy import units as u
 from astropy.table import Table, join
+from astropy.units import UnitTypeError, get_physical_type
 from astropy.units.quantity import Quantity
 from scipy.special import loggamma
+from snewpy import _model_downloader
 
 from snewpy.neutrino import Flavor
+from snewpy.flavor_transformation import NoTransformation
 from functools import wraps
 
 from snewpy.neutrino import MassHierarchy, MixingParameters
@@ -164,6 +168,33 @@ class SupernovaModel(ABC):
 
         return transformed_spectra   
 
+    def get_flux (self, t, E, distance, flavor_xform=NoTransformation()):
+        """Get neutrino flux through 1cm^2 surface at the given distance
+
+        Parameters
+        ----------
+        t : astropy.Quantity
+            Time to evaluate the neutrino spectra.
+        E : astropy.Quantity or ndarray of astropy.Quantity
+            Energies to evaluate the the neutrino spectra.
+        distance : astropy.Quantity or float (in kpc)
+            Distance from supernova.
+        flavor_xform : FlavorTransformation
+            An instance from the flavor_transformation module.
+
+        Returns
+        -------
+        dict
+            Dictionary of neutrino fluxes in [neutrinos/(cm^2*erg*s)], 
+            keyed by neutrino flavor.
+
+        """
+        distance = distance << u.kpc #assume that provided distance is in kpc, or convert
+        factor = 1/(4*np.pi*(distance.to('cm'))**2)
+        flux = self.get_transformed_spectra(t, E, flavor_xform)
+        return {flavor: f*factor for flavor,f in flux.items()}
+
+
 
     def get_oscillatedspectra(self, *args):
         """DO NOT USE! Only for backward compatibility!
@@ -266,6 +297,12 @@ class PinchedModel(SupernovaModel):
         initialspectra : dict
             Dictionary of model spectra, keyed by neutrino flavor.
         """
+        #convert input arguments to 1D arrays
+        t = u.Quantity(t, ndmin=1)
+        E = u.Quantity(E, ndmin=1)
+        #Reshape the Energy array to shape [1,len(E)]
+        E = np.expand_dims(E, axis=0)
+
         initialspectra = {}
 
         # Avoid division by zero in energy PDF below.
@@ -285,15 +322,19 @@ class PinchedModel(SupernovaModel):
             Ea = get_value(np.interp(t, self.time, self.meanE[flavor].to('erg')))
             a  = np.interp(t, self.time, self.pinch[flavor])
 
-            # Sanity check to avoid invalid values of Ea, alpha, and L.
-            initialspectra[flavor] = np.zeros_like(E, dtype=float) / (u.erg*u.s)
-            if L <= 0. or Ea <= 0. or a <= -2.:
-                continue
+            #Reshape the time-related arrays to shape [len(t),1]
+            L  = np.expand_dims(L, axis=1)
+            Ea = np.expand_dims(Ea,axis=1)
+            a  = np.expand_dims(a, axis=1)
             # For numerical stability, evaluate log PDF and then exponentiate.
-            initialspectra[flavor] = \
+            result = \
               np.exp(np.log(L) - (2+a)*np.log(Ea) + (1+a)*np.log(1+a)
                     - loggamma(1+a) + a*np.log(E) - (1+a)*(E/Ea)) / (u.erg * u.s)
-
+            #remove bad values
+            result[np.isnan(result)] = 0
+            #remove unnecessary dimensions, if E or t was scalar:
+            result = np.squeeze(result)
+            initialspectra[flavor] = result
         return initialspectra
 
     def get_transformed_spectra(self, t, E, flavor_xform, nudecay=False, rbar = 1.0, zeta = 1.0, model="phi0"):
@@ -373,26 +414,35 @@ class PinchedModel(SupernovaModel):
 
 
 class _GarchingArchiveModel(PinchedModel):
-    """Subclass that reads models in the format used in the `Garching Supernova Archive <https://wwwmpa.mpa-garching.mpg.de/ccsnarchive/>`_."""
-    def __init__(self, filename, eos='LS220'):
-        """Initialize model
+    """Subclass that reads models in the format used in the
+    `Garching Supernova Archive <https://wwwmpa.mpa-garching.mpg.de/ccsnarchive/>`_."""
+    def __init__(self, filename, eos='LS220', metadata={}):
+        """Model Initialization.
 
         Parameters
         ----------
         filename : str
-            Absolute or relative path to file prefix, we add nue/nuebar/nux.
-        eos : string
-            Equation of state used in simulation.
-        """
+            Absolute or relative path to file with model data, we add nue/nuebar/nux.  This argument will be deprecated.
+        eos: str
+            Equation of state. Valid value is 'LS220'. This argument will be deprecated.
 
-        # Store model metadata.
-        self.filename = os.path.basename(filename)
-        self.EOS = eos
-        self.progenitor_mass = float( (self.filename.split('s'))[1].split('c')[0] )  * u.Msun
-        metadata = {
-            'Progenitor mass':self.progenitor_mass,
-            'EOS':self.EOS,
+        Other Parameters
+        ----------------
+        progenitor_mass: astropy.units.Quantity
+            Mass of model progenitor in units Msun. Valid values are {progenitor_mass}.
+        Raises
+        ------
+        FileNotFoundError
+            If a file for the chosen model parameters cannot be found
+        ValueError
+            If a combination of parameters is invalid when loading from parameters
+        """
+        if not metadata:
+            metadata = {
+                'Progenitor mass': float(os.path.basename(filename).split('s')[1].split('c')[0]) * u.Msun,
+                'EOS': eos,
             }
+
         # Read through the several ASCII files for the chosen simulation and
         # merge the data into one giant table.
         mergtab = None
@@ -400,12 +450,15 @@ class _GarchingArchiveModel(PinchedModel):
             _flav = Flavor.NU_X if flavor == Flavor.NU_X_BAR else flavor
             _sfx = _flav.name.replace('_', '').lower()
             _filename = '{}_{}_{}'.format(filename, eos, _sfx)
-            _lname  = 'L_{}'.format(flavor.name)
-            _ename  = 'E_{}'.format(flavor.name)
+            _lname = 'L_{}'.format(flavor.name)
+            _ename = 'E_{}'.format(flavor.name)
             _e2name = 'E2_{}'.format(flavor.name)
-            _aname  = 'ALPHA_{}'.format(flavor.name)
+            _aname = 'ALPHA_{}'.format(flavor.name)
 
-            simtab = Table.read(_filename,
+            # Open the requested filename using the model downloader.
+            datafile = _model_downloader.get_model_data(self.__class__.__name__, _filename)
+
+            simtab = Table.read(datafile,
                                 names=['TIME', _lname, _ename, _e2name],
                                 format='ascii')
             simtab['TIME'].unit = 's'
@@ -494,3 +547,93 @@ class _SegerlundModel(PinchedModel):
         super().__init__(simtab, metadata)
 
 
+class _RegistryModel(ABC):
+    """Base class for supernova model classes that initialise from physics parameters."""
+
+    _param_validator = None
+
+    @classmethod
+    def get_param_combinations(cls):
+        """Returns all valid combinations of parameters for a given SNEWPY register model.
+
+        Subclasses can provide a Callable `cls._param_validator` that takes a combination of parameters
+        as an argument and returns True if a particular combinations of parameters is valid.
+        If None is provided, all combinations are considered valid.
+
+        Returns
+        -------
+        valid_combinations: tuple[dict]
+            A tuple of all valid parameter combinations stored as Dictionaries
+        """
+        for key, val in cls.param.items():
+            if not isinstance(val, (list, Quantity)):
+                cls.param[key] = [val]
+            elif isinstance(val, Quantity) and val.size == 1:
+                try:
+                    # check if val.value is iterable, e.g. a list or a NumPy array
+                    iter(val.value)
+                except:
+                    cls.param[key] = [val.value] * val.unit
+        combos = tuple(dict(zip(cls.param, combo)) for combo in it.product(*cls.param.values()))
+        return tuple(c for c in filter(cls._param_validator, combos))
+
+    def check_valid_params(cls, **user_params):
+        """Checks that the model-specific values, units, names and conbinations of requested parameters are valid.
+
+        Parameters
+        ----------
+        user_params : varies
+            User-requested model parameters to be tested for validity.
+            NOTE: This must be provided as kwargs that match the keys of cls.param
+
+        Raises
+        ------
+        ValueError
+            If invalid model parameters are provided based on units, allowed values, etc.
+        UnitTypeError
+            If invalid units are provided for a model parameter
+
+        See Also
+        --------
+        snewpy.models.ccsn
+        snewpy.models.presn
+        """
+        # Check that the appropriate number of params are provided
+        if not all(key in user_params for key in cls.param.keys()):
+            raise ValueError(f"Missing parameter! Expected {cls.param.keys()} but was given {user_params.keys()}")
+
+        # Check parameter units and values
+        for (key, allowed_params), user_param in zip(cls.param.items(), user_params.values()):
+
+            # If both have units, check that the user param value is valid. If valid, continue. Else, error
+            if type(user_param) == Quantity and type(allowed_params) == Quantity:
+                if get_physical_type(user_param.unit) != get_physical_type(allowed_params.unit):
+                    raise UnitTypeError(f"Incorrect units {user_param.unit} provided for parameter {key}, "
+                                        f"expected {allowed_params.unit}")
+
+                elif np.isin(user_param.to(allowed_params.unit).value, allowed_params.value):
+                    continue
+                else:
+                    raise ValueError(f"Invalid value '{user_param}' provided for parameter {key}, "
+                                     f"allowed value(s): {allowed_params}")
+
+            # If one only one has units, then error
+            elif (type(user_param) == Quantity) ^ (type(allowed_params) == Quantity):
+                # User param has units, model param is unitless
+                if type(user_param) == Quantity:
+                    raise ValueError(f"Invalid units {user_param.unit} for parameter {key} provided, expected None")
+                else:
+                    raise ValueError(f"Missing units for parameter {key}, expected {allowed_params.unit}")
+
+            # Check that unitless user param value is valid. If valid, continue. Else, Error
+            elif user_param in allowed_params:
+                continue
+            else:
+                raise ValueError(f"Invalid value '{user_param}' provided for parameter {key}, "
+                                 f"allowed value(s): {allowed_params}")
+
+        # Check Combinations (Logic lives inside model subclasses under model.isvalid_param_combo)
+        if user_params not in cls.get_param_combinations():
+            raise ValueError(
+                f"Invalid parameter combination. See {cls.__class__.__name__}.get_param_combinations() for a "
+                "list of allowed parameter combinations.")

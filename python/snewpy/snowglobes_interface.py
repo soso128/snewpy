@@ -1,5 +1,5 @@
 """
-The module ``snewpy.snowglobes_interface`` contains a low-level Python interface for SNOwGLoBES v1.2.
+The module ``snewpy.snowglobes_interface`` contains a low-level Python interface for SNOwGLoBES v1.3.
 
 .. note::
     Users should only use the high-level interface described above.
@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 from tqdm.auto import tqdm
 
 def guess_material(detector):
-    if detector.startswith('wc') or detector.startswith('ice'):
+    if detector.startswith('wc') or detector.startswith('ice') or detector.startswith('km3'):
         mat = 'water'
     elif detector.startswith('dark'):
         mat = 'argon_coh'
@@ -99,22 +99,35 @@ class SimpleRate():
         logger.debug(f'detectors: {self.detectors}')
        
     def _load_channels(self, chan_dir):
-
-        def _read_binning(fname):
-            with open(fname) as f:
-                l = f.readline().strip()
-                if not l.startswith('%'):
-                    l = '% 200 0.0005 0.100 200 0.0005 0.100'
-                tokens = l.split(' ')[1:]
-                return dict(zip(['nsamples','smin','smax','nbins','emin','emax'],tokens))
-
         self.channels = {}
         self.binning = {}
         for f in chan_dir.glob('channels_*.dat'):
             material = f.stem[len('channels_'):]
-            df = pd.read_table(f,delim_whitespace=True, index_col=1, comment='%', names=['name','n','parity','flavor','weight'])
+            # in SNOwGLoBES v1.3, there are three different formats of channel files
+            # We identify these based on their first line and read them in separately:
+            with open(f) as _f:
+                l = _f.readline().strip()
+            if l.startswith('%'):
+                # Format 1: explicit binning, same for all channels
+                tokens = l.split()[1:]
+                df = pd.read_table(f, delim_whitespace=True, index_col=1, comment='%', names=['name','n','parity','flavor','weight'])
+            elif l.startswith('SN_nu'):
+                # Format 2: explicit binning, differs per channel
+                tokens = l.split()[6:]
+                df = pd.read_table(f, delim_whitespace=True, index_col=1, comment='%', names=['name','n','parity','flavor','weight'], usecols=range(1,6))
+                # drop coherent scattering channels, which have different binning
+                df = df[df["name"].str.startswith('coh_') == False]
+            else:
+                # Format 3: no binning specified, use SNOwGLoBES default values
+                tokens = '% 200 0.0005 0.100 200 0.0005 0.100'.split()[1:]
+                df = pd.read_table(f, delim_whitespace=True, index_col=1, comment='%', names=['name','n','parity','flavor','weight'])
+
             self.channels[material] = df
-            self.binning[material] = _read_binning(f)
+
+            nsamples, smin, smax, nbins, emin, emax = [float(t) for t in tokens]
+            self.binning[material] = {'e_true': np.linspace(smin, smax, int(nsamples)+1),
+                                      'e_smear': np.linspace(emin, emax, int(nbins)+1)
+                                      }
         self.materials = list(self.channels.keys())
         self.chan_dir = chan_dir
         logger.info(f'read channels for materials: {self.materials}')
@@ -124,7 +137,7 @@ class SimpleRate():
         result = {}
         for detector in self.detectors:
             res_det = {}
-            for file in path.glob(f'effic_*_{detector}.dat'):
+            for file in (path/str(detector)).glob(f'effic_*_{detector}.dat'):
                 channel =  file.stem[len('effic_'):-len(detector)-1]
                 logger.debug(f'Reading file ({detector},{channel}): {file}')
                 with open(file) as f:
@@ -139,7 +152,7 @@ class SimpleRate():
         result = {}
         for detector in self.detectors:
             res_det = {}
-            for file in path.glob(f'smear*_{detector}.dat'):
+            for file in (path/str(detector)).glob(f'smear*_{detector}.dat'):
                 channel =  file.stem[len('smear_'):-len(detector)-1]
                 with open(file) as f:
                     lines = f.readlines()[1:-1]
@@ -155,28 +168,52 @@ class SimpleRate():
         logger.info(f'read smearing matrices for detectors: {list(self.smearings.keys())}')
         logger.debug(f'smearing matrices: {self.smearings}')
 
-    def _compute_rates(self, detector, material, flux_file:Path):
-        flux_file = flux_file.resolve()
-        fluxes = np.loadtxt(flux_file)
+    def compute_rates(self, detector:str, material:str, fluxes:np.ndarray, flux_energies:np.ndarray):
+        """ Calculate the rates for the given neutrino fluxes interacting in the given detector.
+
+        Parameters
+        ----------
+        detector: str
+            Detector name in SNOwGLoBES. Check `SimpleRate.detectors` for the list of options
+        material: str
+            Material name in SNOwGLoBES. Check `SimpleRate.materials` for the list of options
+        fluxes:
+            2d array of the neutrino fluxes.
+            First array dimension corresponds to flavors [nu_e, nu_mu, anti_nu_e, anti_nu_mu]
+            Second array dimension corresponds to the `energies` bins,
+
+        flux_energies:
+            1d array of the neutrino energy bins in GeV, corresponding to the `fluxes`
+
+        Returns
+        -------
+        pd.DataFrame
+            Table with Energy (GeV) as index values,
+            and number of events for each energy bin, for all interaction channels.
+            Columns are hierarchical: (is_weighted, channel),
+            so one can easily access the desired final table. 
+        """
         TargetMass = self.detectors[detector].tgt_mass
         data = {}
-        energies = np.linspace(7.49e-4, 9.975e-2, 200) # Use the same energy grid as SNOwGLoBES
-        if '_he' in detector:
-            energies = np.linspace(7.49e-4, 19.975e-2, 400) #SNOwGLoBES grid for he configurations
+
+        #load the binning for the smearing
+        binning= self.binning[material]
+        #calculate bin centers 
+        energies_t = 0.5*(binning['e_true'][1:]+ binning['e_true'][:-1] )
+        energies_s= 0.5*(binning['e_smear'][1:]+binning['e_smear'][:-1])
+        binsize = np.diff(binning['e_true'])
+
         for channel in self.channels[material].itertuples():
             xsec_path = f"xscns/xs_{channel.name}.dat"
             xsec = np.loadtxt(self.base_dir/xsec_path)
             flavor_index = 0 if 'e' in channel.flavor else (1 if 'm' in channel.flavor else 2)
             flavor = flavor_index + (3 if channel.parity == '-' else 0)
-            flux = fluxes[:, (0,1+flavor)]
-            if "all" in channel.flavor:
-                flux[:,1] = fluxes[:,1:].sum(axis=1)
-            binsize = energies[1] - energies[0]
+            flux = fluxes[flavor]
             # Cross-section in 10^-38 cm^2
-            xsecs = np.interp(np.log(energies)/np.log(10), xsec[:, 0], xsec[:, 1+flavor], left=0, right=0) * energies
+            xsecs = np.interp(np.log(energies_t)/np.log(10), xsec[:, 0], xsec[:, 1+flavor], left=0, right=0) * energies_t
             # Fluence (flux integrated over time bin) in cm^-2 
             # (must be divided by 0.2 MeV to compensate the multiplication in generate_time_series)
-            fluxs = np.interp(energies, flux[:, 0], flux[:, 1], left=0, right=0)/2e-4
+            fluxs = np.interp(energies_t, flux_energies, flux, left=0, right=0)/2e-4
             # Rate computation
             flavor_factor = 3 if channel.flavor == "all" else 1
             parity_factor = 2 if channel.parity == "all" else 1
@@ -188,22 +225,15 @@ class SimpleRate():
             data[(channel.name,'unsmeared','weighted')] = weighted_rates
             # Add detector effects
             if self.smearings and self.efficiencies:
-                smear,effic = None,None
-                if channel.name in self.smearings[detector].keys():
-                    smear = self.smearings[detector][channel.name]
-                else:
-                    smear = np.eye(len(rates))
-                if channel.name in self.efficiencies[detector].keys():
-                    effic = self.efficiencies[detector][channel.name]
-                else:
-                    effic = np.ones(len(rates))
+                smear = self.smearings[detector].get(channel.name, np.eye(len(rates)))
+                effic = self.efficiencies[detector].get(channel.name, np.ones(len(rates)))
                 rates = np.dot(smear,rates) * effic
                 weighted_rates = rates * channel.weight
                 # Write to dictionary
                 data[(channel.name,'smeared','unweighted')] = rates
                 data[(channel.name,'smeared','weighted')] = weighted_rates
         #collect everything to pandas DataFrame
-        df = pd.DataFrame(data, index = energies)
+        df = pd.DataFrame(data, index = energies_s)
         df.index.rename('E', inplace=True)
         df.columns.rename(['channel','is_smeared','is_weighted'], inplace=True)
         return df.reorder_levels([2,1,0], axis='columns')
@@ -245,11 +275,14 @@ class SimpleRate():
             raise ValueError(f'Material "{material}" is not in {self.materials}')
         if isinstance(flux_files,str):
             flux_files = [flux_files]
-        
+
         with tqdm(total=len(flux_files), leave=False, desc='Flux files') as progressbar:
             results = []
             for flux_file in flux_files:
-                result = self._compute_rates(detector,material,Path(flux_file))
+                e_flux = np.loadtxt(Path(flux_file).resolve()).T
+                energies = e_flux[0]
+                fluxes = e_flux[1:]
+                result = self.compute_rates(detector, material, fluxes, energies)
                 progressbar.update()
                 results.append(result)
             return results
