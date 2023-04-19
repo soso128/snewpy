@@ -180,6 +180,7 @@ class SimpleRate():
             fluxs = np.interp(energies, flux[:, 0], flux[:, 1], left=0, right=0)/2e-4
             # Rate computation
             rates = xsecs * 1e-38 * fluxs * float(TargetMass) * 1./1.661e-33 * binsize
+            rates = np.where(np.isnan(rates), 0, rates)
             # Weighting
             weighted_rates = rates * channel.weight
             # Write to dictionary
