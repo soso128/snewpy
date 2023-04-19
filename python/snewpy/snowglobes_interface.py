@@ -168,9 +168,10 @@ class SimpleRate():
             xsec = np.loadtxt(self.base_dir/xsec_path)
             flavor_index = 0 if 'e' in channel.flavor else (1 if 'm' in channel.flavor else 2)
             flavor = flavor_index + (3 if channel.parity == '-' else 0)
-            flux = fluxes[:, (0,1+flavor)]
+            flux = None
             if "all" in channel.flavor:
-                flux[:,1] = fluxes[:,1:].sum(axis=1)
+                flux = np.column_stack([fluxes[:, 0], fluxes[:,1:].sum(axis=1)])
+            else: flux = fluxes[:, (0,1+flavor)]
             binsize = energies[1] - energies[0]
             # Cross-section in 10^-38 cm^2
             xsecs = np.interp(np.log(energies)/np.log(10), xsec[:, 0], xsec[:, 1+flavor], left=0, right=0) * energies
@@ -178,9 +179,7 @@ class SimpleRate():
             # (must be divided by 0.2 MeV to compensate the multiplication in generate_time_series)
             fluxs = np.interp(energies, flux[:, 0], flux[:, 1], left=0, right=0)/2e-4
             # Rate computation
-            flavor_factor = 3 if channel.flavor == "all" else 1
-            parity_factor = 2 if channel.parity == "all" else 1
-            rates = xsecs * 1e-38 * fluxs * float(TargetMass) * 1./1.661e-33 * binsize * flavor_factor * parity_factor
+            rates = xsecs * 1e-38 * fluxs * float(TargetMass) * 1./1.661e-33 * binsize
             # Weighting
             weighted_rates = rates * channel.weight
             # Write to dictionary
