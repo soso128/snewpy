@@ -440,6 +440,10 @@ class _SegerlundModel(PinchedModel):
         # Store model metadata.
         self.progenitor_mass = mass
         self.filename = os.path.basename(filename) + f"s{mass:.1f}_INS_small.dat"
+        if not os.path.exists(filename + "/" + self.filename):
+            self.filename = os.path.basename(filename) + f"s{int(mass)}_INS_small.dat"
+        if not os.path.exists(filename + "/" + self.filename):
+            self.filename = os.path.basename(filename) + f"s{mass:.2f}_INS_small.dat"
         _filename = filename + "/" +  self.filename
         metadata = {
             'Progenitor mass':self.progenitor_mass
